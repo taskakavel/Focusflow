@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Generate FocusFlow 'Tomato Demon' icons (180/192/512) using only stdlib.
+"""Generate FocusFlow 'Playful Angry Tomato' icons (180/192/512) using only stdlib.
 
-Design: dark navy background, indigo timer-ring arc, angry red tomato
-with devil horns, stem, fangs, tongue and slanted brows. Fully opaque.
+Design: dark navy background, indigo timer-ring arc, a big round RED tomato
+with a small green leaf-stem, two small black horns, big white eyes with
+angry pupils, a little frown with fangs and tongue. Playful, high-contrast.
 """
 import math
 import struct
@@ -49,7 +50,6 @@ def blend(cur, col, cov):
 
 
 def make_icon(S):
-    # Coverage helpers (1 inside, 0 outside, ~1px AA band)
     def band(edge, d):
         return clampf(edge - d + 0.5)
 
@@ -72,13 +72,6 @@ def make_icon(S):
     def capsule_cov(px, py, a, b, w):
         return band(w, seg_dist(px, py, a, b))
 
-    def tri_in(px, py, p1, p2, p3):
-        s1 = (px - p1[0]) * (p2[1] - p1[1]) - (py - p1[1]) * (p2[0] - p1[0])
-        s2 = (px - p2[0]) * (p3[1] - p2[1]) - (py - p2[1]) * (p3[0] - p2[0])
-        s3 = (px - p3[0]) * (p1[1] - p3[1]) - (py - p3[1]) * (p1[0] - p3[0])
-        same = (s1 >= 0 and s2 >= 0 and s3 >= 0) or (s1 <= 0 and s2 <= 0 and s3 <= 0)
-        return 1.0 if same else 0.0
-
     def arc_cov(px, py, cx, cy, r_out, r_in, gap_from, gap_to):
         r = math.hypot(px - cx, py - cy)
         ang = math.degrees(math.atan2(py - cy, px - cx))
@@ -87,25 +80,21 @@ def make_icon(S):
         return min(band(r_out, r), band(r, r_in))
 
     # Palette
-    bg_top = (49, 46, 129)      # indigo-900
-    bg_bot = (15, 23, 42)       # slate-900
-    ring_a = (165, 180, 252)    # indigo-300
-    ring_b = (99, 102, 241)     # indigo-500
-    tom_top = (248, 113, 113)   # red-400
-    tom_bot = (153, 27, 27)     # red-800
-    gloss_c = (255, 200, 200)
-    stem_c = (34, 197, 94)
+    bg_top = (49, 46, 129)
+    bg_bot = (15, 23, 42)
+    ring_a = (165, 180, 252)
+    ring_b = (99, 102, 241)
+    tom_a = (252, 165, 165)     # light red
+    tom_b = (220, 38, 38)       # strong red
+    gloss = (255, 228, 228)
+    stem = (74, 222, 128)
     stem_d = (22, 101, 52)
-    horn_c = (120, 12, 12)
-    dark = (17, 24, 39)
+    horn = (60, 20, 20)
+    dark = (20, 15, 15)
     white = (255, 255, 255)
-    tongue_c = (239, 68, 68)
+    tongue = (248, 113, 113)
 
     cx = cy = 0.5
-    horn_paths = [
-        [(0.415, 0.405), (0.33, 0.235), (0.40, 0.13)],   # left
-        [(0.585, 0.405), (0.67, 0.235), (0.60, 0.13)],   # right
-    ]
 
     rows = []
     for y in range(S):
@@ -119,47 +108,43 @@ def make_icon(S):
 
                     c = mix(bg_top, bg_bot, py)
 
-                    # Indigo timer-ring arc (gap at the bottom)
-                    cov = arc_cov(px, py, cx, cy, 0.44, 0.365, -105, -75)
+                    # Indigo ring arc (gap at bottom)
+                    cov = arc_cov(px, py, cx, cy, 0.44, 0.375, -105, -75)
                     c = blend(c, mix(ring_a, ring_b, py), cov * 0.95)
 
-                    # Tomato body
-                    cov = circle_cov(px, py, 0.5, 0.55, 0.30)
-                    c = blend(c, mix(tom_top, tom_bot, py), cov)
+                    # Tomato body (big round, slightly below center)
+                    cov = circle_cov(px, py, 0.5, 0.56, 0.30)
+                    c = blend(c, mix(tom_a, tom_b, py), cov)
 
                     # Gloss highlight
-                    cov = ellipse_cov(px, py, 0.395, 0.465, 0.06, 0.045)
-                    c = blend(c, gloss_c, cov * 0.4)
+                    cov = ellipse_cov(px, py, 0.39, 0.47, 0.065, 0.05)
+                    c = blend(c, gloss, cov * 0.45)
 
-                    # Stem + leaves
-                    c = blend(c, stem_d, capsule_cov(px, py, (0.5, 0.258), (0.5, 0.19), 0.03))
-                    c = blend(c, stem_c, capsule_cov(px, py, (0.5, 0.235), (0.41, 0.205), 0.022))
-                    c = blend(c, stem_c, capsule_cov(px, py, (0.5, 0.235), (0.59, 0.205), 0.022))
+                    # Leaf-stem (small cute leaves)
+                    c = blend(c, stem_d, capsule_cov(px, py, (0.5, 0.258), (0.5, 0.21), 0.026))
+                    c = blend(c, stem, capsule_cov(px, py, (0.5, 0.245), (0.43, 0.215), 0.02))
+                    c = blend(c, stem, capsule_cov(px, py, (0.5, 0.245), (0.57, 0.215), 0.02))
 
-                    # Devil horns
-                    for hp in horn_paths:
-                        c = blend(c, horn_c, capsule_cov(px, py, hp[0], hp[1], 0.062))
-                        c = blend(c, horn_c, capsule_cov(px, py, hp[1], hp[2], 0.05))
+                    # Small horns (cuter, shorter)
+                    c = blend(c, horn, capsule_cov(px, py, (0.445, 0.43), (0.40, 0.295), 0.055))
+                    c = blend(c, horn, capsule_cov(px, py, (0.555, 0.43), (0.60, 0.295), 0.055))
 
-                    # Mouth, tongue, fangs
-                    cov = ellipse_cov(px, py, 0.5, 0.655, 0.095, 0.045)
+                    # Mouth: small frown
+                    cov = ellipse_cov(px, py, 0.5, 0.665, 0.075, 0.035)
                     c = blend(c, dark, cov)
-                    c = blend(c, tongue_c, ellipse_cov(px, py, 0.5, 0.668, 0.034, 0.016))
-                    t1 = tri_in(px, py, (0.448, 0.632), (0.478, 0.632), (0.463, 0.668))
-                    t2 = tri_in(px, py, (0.552, 0.632), (0.522, 0.632), (0.537, 0.668))
-                    c = blend(c, white, max(t1, t2))
+                    c = blend(c, tongue, ellipse_cov(px, py, 0.5, 0.673, 0.026, 0.013))
 
-                    # Eyes (white + angry pupils toward center) + glints
-                    c = blend(c, white, ellipse_cov(px, py, 0.408, 0.555, 0.047, 0.055))
-                    c = blend(c, white, ellipse_cov(px, py, 0.592, 0.555, 0.047, 0.055))
-                    c = blend(c, dark, ellipse_cov(px, py, 0.424, 0.565, 0.019, 0.031))
-                    c = blend(c, dark, ellipse_cov(px, py, 0.576, 0.565, 0.019, 0.031))
-                    c = blend(c, white, circle_cov(px, py, 0.428, 0.556, 0.008))
-                    c = blend(c, white, circle_cov(px, py, 0.572, 0.556, 0.008))
+                    # Big cute eyes
+                    c = blend(c, white, circle_cov(px, py, 0.41, 0.56, 0.055))
+                    c = blend(c, white, circle_cov(px, py, 0.59, 0.56, 0.055))
+                    c = blend(c, dark, circle_cov(px, py, 0.425, 0.565, 0.020))
+                    c = blend(c, dark, circle_cov(px, py, 0.575, 0.565, 0.020))
+                    c = blend(c, white, circle_cov(px, py, 0.429, 0.559, 0.007))
+                    c = blend(c, white, circle_cov(px, py, 0.571, 0.559, 0.007))
 
-                    # Angry slanted eyebrows
-                    c = blend(c, dark, capsule_cov(px, py, (0.36, 0.505), (0.448, 0.532), 0.026))
-                    c = blend(c, dark, capsule_cov(px, py, (0.64, 0.505), (0.552, 0.532), 0.026))
+                    # Angry brows (slanted inward)
+                    c = blend(c, dark, capsule_cov(px, py, (0.35, 0.495), (0.45, 0.528), 0.024))
+                    c = blend(c, dark, capsule_cov(px, py, (0.65, 0.495), (0.55, 0.528), 0.024))
 
                     acc[0] += c[0]
                     acc[1] += c[1]

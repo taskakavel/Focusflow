@@ -1,4 +1,4 @@
-// ===== FocusFlow — Pomodoro Timer =====
+// ===== FocusFlow — Pomodoro Timer (v4, defensive) =====
 const DURATIONS = {
   focus: 25 * 60,
   short: 5 * 60,
@@ -12,21 +12,7 @@ const LABELS = {
 };
 
 const STORAGE_KEY = 'focusflow-stats';
-
-// === DOM refs ===
-const els = {
-  card: document.querySelector('.card'),
-  time: document.getElementById('time'),
-  sessionLabel: document.getElementById('sessionLabel'),
-  startBtn: document.getElementById('startBtn'),
-  resetBtn: document.getElementById('resetBtn'),
-  tabs: [...document.querySelectorAll('.tab')],
-  ringFg: document.querySelector('.ring-fg'),
-  completedCount: document.getElementById('completedCount'),
-  totalMinutes: document.getElementById('totalMinutes'),
-  streak: document.getElementById('streak'),
-  toast: document.getElementById('toast'),
-};
+const SESSION_KEY = 'focusflow-session'; // persisted running session
 
 // === State ===
 let mode = 'focus';
@@ -34,9 +20,26 @@ let timeLeft = DURATIONS[mode];
 let totalDuration = DURATIONS[mode];
 let timerId = null;
 let isRunning = false;
-let endTime = null;          // wall-clock target when running
+let endTime = null;      // wall-clock target when running
 let wakeLock = null;
-let completeFiredWhileHidden = false;
+let wakeLockHintTimer = null;
+
+// === DOM refs (nullable-safe) ===
+const $ = (sel) => document.querySelector(sel);
+const els = {
+  card: $('.card'),
+  time: $('#time'),
+  sessionLabel: $('#sessionLabel'),
+  startBtn: $('#startBtn'),
+  resetBtn: $('#resetBtn'),
+  tabs: Array.prototype.slice.call(document.querySelectorAll('.tab')),
+  ringFg: $('.ring-fg'),
+  completedCount: $('#completedCount'),
+  totalMinutes: $('#totalMinutes'),
+  streak: $('#streak'),
+  toast: $('#toast'),
+  wakeHint: $('#wakeHint'),
+};
 
 // === Persisted stats ===
 function getStats() {
@@ -52,14 +55,43 @@ function getStats() {
 }
 
 function saveStats(stats) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
-  } catch {
-    /* storage unavailable — fine to ignore */
-  }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(stats)); } catch { /* ignore */ }
 }
 
 let stats = getStats();
+
+// === Persisted running session (accuracy across tab close / relaunch) ===
+function saveSession() {
+  try {
+    if (isRunning && endTime) {
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ endTime, mode, totalDuration }));
+    } else {
+      localStorage.removeItem(SESSION_KEY);
+    }
+  } catch { /* ignore */ }
+}
+
+function restoreSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (!s || !s.endTime || s.endTime <= Date.now()) {
+      // Session finished while we were away — start fresh.
+      localStorage.removeItem(SESSION_KEY);
+      return;
+    }
+    if (!DURATIONS[s.mode]) return;
+    mode = s.mode;
+    totalDuration = DURATIONS[s.mode] || s.totalDuration;
+    timeLeft = Math.max(0, Math.ceil((s.endTime - Date.now()) / 1000));
+    endTime = s.endTime;
+    isRunning = true;
+    syncUI();
+    requestWakeLock();
+    timerId = setInterval(tick, 250);
+  } catch { /* ignore */ }
+}
 
 // === Rendering ===
 function formatTime(sec) {
@@ -69,29 +101,45 @@ function formatTime(sec) {
 }
 
 function render(updateLabel = true) {
-  els.time.textContent = formatTime(timeLeft);
-  const CIRC = 2 * Math.PI * 120;
-  const progress = timeLeft / totalDuration;
-  els.ringFg.style.strokeDashoffset = String(CIRC * (1 - progress));
-  if (updateLabel) els.sessionLabel.textContent = LABELS[mode];
+  if (els.time) els.time.textContent = formatTime(timeLeft);
+  if (els.ringFg) {
+    const CIRC = 2 * Math.PI * 120;
+    const progress = totalDuration > 0 ? timeLeft / totalDuration : 0;
+    els.ringFg.style.strokeDashoffset = String(CIRC * (1 - progress));
+  }
+  if (updateLabel && els.sessionLabel) els.sessionLabel.textContent = LABELS[mode];
 }
 
 function renderStats() {
-  els.completedCount.textContent = stats.sessions;
-  els.totalMinutes.textContent = stats.minutes;
-  els.streak.textContent = stats.streak;
+  if (els.completedCount) els.completedCount.textContent = stats.sessions;
+  if (els.totalMinutes) els.totalMinutes.textContent = stats.minutes;
+  if (els.streak) els.streak.textContent = stats.streak;
 }
 
-// === Wake lock (keeps screen on while timer runs, where supported) ===
+// === UI sync ===
+function syncUI() {
+  if (els.startBtn) els.startBtn.textContent = isRunning ? '⏸ Pause' : '▶ Start';
+  if (els.startBtn) els.startBtn.classList.toggle('running', isRunning);
+  if (els.card) els.card.classList.toggle('running', isRunning);
+  if (els.card) els.card.dataset.mode = mode;
+
+  els.tabs.forEach((t) => {
+    const active = t.dataset.mode === mode;
+    t.classList.toggle('is-active', active);
+    t.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  render();
+}
+
+// === Wake lock (keeps the SCREEN ON while the app is visible & running) ===
 async function requestWakeLock() {
   try {
     if ('wakeLock' in navigator && !wakeLock) {
       wakeLock = await navigator.wakeLock.request('screen');
       wakeLock.addEventListener('release', () => { wakeLock = null; });
+      showWakeHint(true);
     }
-  } catch {
-    /* wake lock unsupported or denied — non-fatal */
-  }
+  } catch { /* unsupported / denied — the timer still runs anyway */ }
 }
 
 function releaseWakeLock() {
@@ -99,21 +147,29 @@ function releaseWakeLock() {
     try { wakeLock.release(); } catch { /* ignore */ }
     wakeLock = null;
   }
+  showWakeHint(false);
 }
 
-// Re-acquire when the tab becomes visible again (OS may auto-release)
+function showWakeHint(on) {
+  if (!els.wakeHint) return;
+  els.wakeHint.textContent = on ? '🌞 Screen stays on while running' : '';
+  clearTimeout(wakeLockHintTimer);
+  if (on) {
+    wakeLockHintTimer = setTimeout(() => { if (els.wakeHint) els.wakeHint.textContent = ''; }, 4000);
+  }
+}
+
+// Re-acquire if the OS released it (e.g. after locking/unlocking)
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && isRunning) {
+    render(false);
     requestWakeLock();
   }
 });
 
-// === Accurate timer (catches up correctly even in background/locked) ===
-// Uses a wall-clock endTime + setInterval. If the device suspends JS
-// (background tab, or locked screen once the OS suspends the page), the
-// interval stalls — but the next tick recomputes from Date.now(), so the
-// displayed time is always correct when you come back.
+// === Accurate timer using wall-clock endTime ===
 function tick() {
+  if (!endTime) return;
   const now = Date.now();
   const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
   timeLeft = remaining;
@@ -124,26 +180,24 @@ function tick() {
     timerId = null;
     isRunning = false;
     endTime = null;
-    updateButton();
-    if (document.visibilityState === 'hidden') {
-      // We finished in the background: mark for completion on return.
-      // (The OS usually suspends us before this, but this covers cases
-      // where a background tab is still throttled-but-alive.)
-      completeFiredWhileHidden = true;
-      renderStats();
-      return;
-    }
+    saveSession();
+    syncUI();
     handleComplete();
   }
 }
 
 function startTimer() {
+  // Permission prompt needs a user gesture — do it here, once.
+  ensureNotificationPermission();
+
   if (timerId) return;
+  if (timeLeft <= 0) timeLeft = totalDuration;
+
   isRunning = true;
   endTime = Date.now() + timeLeft * 1000;
-  updateButton();
+  syncUI();
+  saveSession();
   requestWakeLock();
-  render();
   timerId = setInterval(tick, 250);
 }
 
@@ -153,13 +207,14 @@ function pauseTimer() {
   isRunning = false;
   endTime = null;
   releaseWakeLock();
-  updateButton();
+  saveSession();
+  syncUI();
 }
 
 function resetTimer() {
   pauseTimer();
   timeLeft = totalDuration;
-  render();
+  syncUI();
 }
 
 function setMode(nextMode) {
@@ -168,24 +223,8 @@ function setMode(nextMode) {
   totalDuration = DURATIONS[mode];
   timeLeft = totalDuration;
   pauseTimer();
-  render();
-
-  els.tabs.forEach((t) => {
-    const active = t.dataset.mode === mode;
-    t.classList.toggle('is-active', active);
-    t.setAttribute('aria-selected', active);
-  });
-  els.sessionLabel.textContent = LABELS[mode];
-  els.card.dataset.mode = mode;
+  syncUI();
 }
-
-// === Auto-switch when we finish while the tab was hidden ===
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && completeFiredWhileHidden) {
-    completeFiredWhileHidden = false;
-    handleComplete();
-  }
-});
 
 // === Completion ===
 function handleComplete() {
@@ -194,7 +233,6 @@ function handleComplete() {
   stats.minutes += Math.round(DURATIONS.focus / 60) * (wasFocus ? 1 : 0);
   const today = new Date().toDateString();
   if (wasFocus) {
-    // Streak: consecutive distinct days including today
     if (stats.lastDay !== today) {
       const yesterday = new Date(Date.now() - 86400000).toDateString();
       stats.streak = stats.lastDay === yesterday ? stats.streak + 1 : 1;
@@ -205,8 +243,8 @@ function handleComplete() {
   renderStats();
 
   const msg = wasFocus
-    ? `✅ Focus session complete! Time for a break.`
-    : `☕ Break over — let's focus!`;
+    ? '✅ Focus session complete! Time for a break.'
+    : '☕ Break over — let\'s focus!';
 
   showToast(msg);
   playChime();
@@ -214,9 +252,7 @@ function handleComplete() {
   setMode(wasFocus ? 'short' : 'focus');
 }
 
-// === Notifications + vibration (alert you even if you're in another app) ===
-// Note: push/media/notifications can't run while the phone is fully locked —
-// this covers switching apps / screen-on cases.
+// === Notifications + vibration (screen-on / other-app scenarios) ===
 function ensureNotificationPermission() {
   try {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -260,43 +296,54 @@ function playChime() {
       osc.start(now + i * 0.18);
       osc.stop(now + i * 0.18 + 0.4);
     });
-  } catch {
-    /* audio unsupported — ignore */
-  }
+  } catch { /* audio unsupported */ }
 }
 
 // === Toast ===
 let toastTimer = null;
 function showToast(msg) {
+  if (!els.toast) return;
   els.toast.textContent = msg;
   els.toast.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => els.toast.classList.remove('show'), 3500);
 }
 
-// === Events ===
-els.startBtn.addEventListener('click', () => (isRunning ? pauseTimer() : startTimer()));
-els.resetBtn.addEventListener('click', resetTimer);
-
-els.tabs.forEach((tab) => {
-  tab.addEventListener('click', () => setMode(tab.dataset.mode));
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') {
-    e.preventDefault();
-    isRunning ? pauseTimer() : startTimer();
-  } else if (e.key.toLowerCase() === 'r') {
-    resetTimer();
-  } else if (e.key.toLowerCase() === 't') {
-    const order = ['focus', 'short', 'long'];
-    setMode(order[(order.indexOf(mode) + 1) % order.length]);
+// === Wiring ===
+function bindEvents() {
+  if (els.startBtn) {
+    els.startBtn.addEventListener('click', () => (isRunning ? pauseTimer() : startTimer()));
   }
-});
-
-// Ask for notification permission on first start (user gesture requirement).
-ensureNotificationPermission();
+  if (els.resetBtn) {
+    els.resetBtn.addEventListener('click', resetTimer);
+  }
+  els.tabs.forEach((tab) => {
+    tab.addEventListener('click', () => setMode(tab.dataset.mode));
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (isRunning) pauseTimer(); else startTimer();
+    } else if (e.key && e.key.toLowerCase() === 'r') {
+      resetTimer();
+    } else if (e.key && e.key.toLowerCase() === 't') {
+      const order = ['focus', 'short', 'long'];
+      setMode(order[(order.indexOf(mode) + 1) % order.length]);
+    }
+  });
+}
 
 // === Init ===
-render();
-renderStats();
+function init() {
+  render();
+  renderStats();
+  syncUI();
+  bindEvents();
+  restoreSession(); // may set the timer running again from a stored endTime
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}

@@ -290,6 +290,15 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
+/* Wake-lock hint */
+.wake-hint {
+  min-height: 20px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #34d399;
+  letter-spacing: 0.3px;
+}
+
 /* Pulse animation when running */
 .running .time {
   animation: pulse 2s ease-in-out infinite;
