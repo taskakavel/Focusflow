@@ -34,6 +34,9 @@ let timeLeft = DURATIONS[mode];
 let totalDuration = DURATIONS[mode];
 let timerId = null;
 let isRunning = false;
+let endTime = null;          // wall-clock target when running
+let wakeLock = null;
+let completeFiredWhileHidden = false;
 
 // === Persisted stats ===
 function getStats() {
@@ -79,33 +82,77 @@ function renderStats() {
   els.streak.textContent = stats.streak;
 }
 
-// === Timer control ===
-function updateButton() {
-  els.startBtn.textContent = isRunning ? '⏸ Pause' : '▶ Start';
-  els.startBtn.classList.toggle('running', isRunning);
-  els.card.classList.toggle('running', isRunning);
+// === Wake lock (keeps screen on while timer runs, where supported) ===
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch {
+    /* wake lock unsupported or denied — non-fatal */
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) {
+    try { wakeLock.release(); } catch { /* ignore */ }
+    wakeLock = null;
+  }
+}
+
+// Re-acquire when the tab becomes visible again (OS may auto-release)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isRunning) {
+    requestWakeLock();
+  }
+});
+
+// === Accurate timer (catches up correctly even in background/locked) ===
+// Uses a wall-clock endTime + setInterval. If the device suspends JS
+// (background tab, or locked screen once the OS suspends the page), the
+// interval stalls — but the next tick recomputes from Date.now(), so the
+// displayed time is always correct when you come back.
+function tick() {
+  const now = Date.now();
+  const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
+  timeLeft = remaining;
+  render(false);
+
+  if (remaining <= 0) {
+    clearInterval(timerId);
+    timerId = null;
+    isRunning = false;
+    endTime = null;
+    updateButton();
+    if (document.visibilityState === 'hidden') {
+      // We finished in the background: mark for completion on return.
+      // (The OS usually suspends us before this, but this covers cases
+      // where a background tab is still throttled-but-alive.)
+      completeFiredWhileHidden = true;
+      renderStats();
+      return;
+    }
+    handleComplete();
+  }
 }
 
 function startTimer() {
   if (timerId) return;
   isRunning = true;
+  endTime = Date.now() + timeLeft * 1000;
   updateButton();
-  timerId = setInterval(() => {
-    timeLeft -= 1;
-    render(false);
-    if (timeLeft <= 0) {
-      clearInterval(timerId);
-      timerId = null;
-      isRunning = false;
-      handleComplete();
-    }
-  }, 1000);
+  requestWakeLock();
+  render();
+  timerId = setInterval(tick, 250);
 }
 
 function pauseTimer() {
   clearInterval(timerId);
   timerId = null;
   isRunning = false;
+  endTime = null;
+  releaseWakeLock();
   updateButton();
 }
 
@@ -132,6 +179,14 @@ function setMode(nextMode) {
   els.card.dataset.mode = mode;
 }
 
+// === Auto-switch when we finish while the tab was hidden ===
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && completeFiredWhileHidden) {
+    completeFiredWhileHidden = false;
+    handleComplete();
+  }
+});
+
 // === Completion ===
 function handleComplete() {
   const wasFocus = mode === 'focus';
@@ -149,14 +204,42 @@ function handleComplete() {
   saveStats(stats);
   renderStats();
 
-  if (wasFocus) {
-    showToast(`✅ Focus session complete! Time for a break.`);
-    setMode('short');
-  } else {
-    showToast(`☕ Break over — let's focus!`);
-    setMode('focus');
-  }
+  const msg = wasFocus
+    ? `✅ Focus session complete! Time for a break.`
+    : `☕ Break over — let's focus!`;
+
+  showToast(msg);
   playChime();
+  notify(msg);
+  setMode(wasFocus ? 'short' : 'focus');
+}
+
+// === Notifications + vibration (alert you even if you're in another app) ===
+// Note: push/media/notifications can't run while the phone is fully locked —
+// this covers switching apps / screen-on cases.
+function ensureNotificationPermission() {
+  try {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  } catch { /* unsupported */ }
+}
+
+function notify(msg) {
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('FocusFlow', {
+        body: msg,
+        icon: 'apple-touch-icon.png',
+        tag: 'focusflow',
+      });
+    }
+  } catch { /* unsupported */ }
+  try {
+    if (typeof navigator.vibrate === 'function') {
+      navigator.vibrate([200, 100, 200]);
+    }
+  } catch { /* unsupported */ }
 }
 
 // === Sound (Web Audio API) ===
@@ -210,6 +293,9 @@ document.addEventListener('keydown', (e) => {
     setMode(order[(order.indexOf(mode) + 1) % order.length]);
   }
 });
+
+// Ask for notification permission on first start (user gesture requirement).
+ensureNotificationPermission();
 
 // === Init ===
 render();
