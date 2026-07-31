@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FocusFlow">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>FocusFlow — Pomodoro Timer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="logo">⚡ FocusFlow</h1>
+      <p class="tagline">Stay focused, one session at a time</p>
+    </header>
+
+    <main class="card">
+      <!-- Mode tabs -->
+      <div class="tabs" role="tablist">
+        <button class="tab is-active" data-mode="focus" role="tab">Focus</button>
+        <button class="tab" data-mode="short" role="tab">Short Break</button>
+        <button class="tab" data-mode="long" role="tab">Long Break</button>
+      </div>
+
+      <!-- Circular timer -->
+      <div class="timer-wrap">
+        <svg class="progress-ring" viewBox="0 0 260 260">
+          <circle class="ring-bg" cx="130" cy="130" r="120" />
+          <circle class="ring-fg" cx="130" cy="130" r="120" />
+        </svg>
+        <div class="timer-display">
+          <div class="time" id="time">25:00</div>
+          <div class="session-label" id="sessionLabel">Focus</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button class="btn btn-primary" id="startBtn">▶ Start</button>
+        <button class="btn btn-ghost" id="resetBtn">↺ Reset</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-value" id="completedCount">0</span>
+          <span class="stat-label">sessions</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="totalMinutes">0</span>
+          <span class="stat-label">min focused</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="streak">0</span>
+          <span class="stat-label">day streak 🔥</span>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <p>Space to start/pause · R to reset · T to switch modes</p>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="script.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(function (err) {
+        console.warn('Service worker registration failed:', err);
+      });
+    }
+  </script>
+</body>
+</html>
