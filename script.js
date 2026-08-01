@@ -191,6 +191,8 @@ function tick() {
 function startTimer() {
   // Permission prompt needs a user gesture — do it here, once.
   ensureNotificationPermission();
+  // Unlock audio within this user gesture so the alarm can ring later.
+  unlockAudio();
 
   if (timerId) return;
   if (timeLeft <= 0) timeLeft = totalDuration;
@@ -249,7 +251,7 @@ function handleComplete() {
     : '☕ Break over — let\'s focus!';
 
   showToast(msg);
-  playChime();
+  playAlarm();
   notify(msg);
   setMode(wasFocus ? 'short' : 'focus');
 }
@@ -282,22 +284,53 @@ function notify(msg) {
 
 // === Sound (Web Audio API) ===
 let audioCtx = null;
-function playChime() {
+
+// Unlock/resume the AudioContext inside a user gesture (e.g. pressing Start).
+// iOS suspends audio until it's resumed in a tap handler — calling this in
+// startTimer() guarantees the alarm can actually ring at completion.
+function unlockAudio() {
   try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const now = audioCtx.currentTime;
-    [660, 880, 990].forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, now + i * 0.18);
-      gain.gain.linearRampToValueAtTime(0.25, now + i * 0.18 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.18 + 0.35);
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start(now + i * 0.18);
-      osc.stop(now + i * 0.18 + 0.4);
-    });
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  } catch { /* audio unsupported */ }
+}
+
+// One ringing burst: a warble between two frequencies (classic ring tone)
+function ringBurst(start, dur) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  for (let t = 0; t < dur; t += 0.12) {
+    osc.frequency.setValueAtTime(t % 0.24 < 0.12 ? 880 : 1046, start + t);
+  }
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(0.35, start + 0.02);
+  gain.gain.setValueAtTime(0.35, start + dur - 0.06);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(start);
+  osc.stop(start + dur + 0.05);
+}
+
+// Ringing alarm when a session finishes: "ring-ring … ring-ring … ring-ring"
+function playAlarm() {
+  try {
+    unlockAudio();
+    if (!audioCtx || audioCtx.state !== 'running') return;
+    const now = audioCtx.currentTime + 0.05;
+    const DUR = 0.75;   // length of one ring
+    const GAP = 0.25;   // gap between the two rings
+    const PAUSE = 0.6;  // pause between cycles
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const base = now + cycle * (2 * DUR + GAP + PAUSE);
+      ringBurst(base, DUR);              // ring ring
+      ringBurst(base + DUR + GAP, DUR);  // ring ring
+    }
   } catch { /* audio unsupported */ }
 }
 
