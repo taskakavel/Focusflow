@@ -6,7 +6,7 @@ const DURATIONS = {
 };
 
 const LABELS = {
-  focus: 'Focus',
+  focus: '⏳ Focus',
   short: 'Short Break',
   long: 'Long Break',
 };
