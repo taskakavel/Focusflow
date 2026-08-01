@@ -1,7 +1,7 @@
 // ===== FocusFlow Service Worker — offline support =====
 // IMPORTANT: bump this version whenever you deploy an update.
 // It tells browsers to re-download and swap out the old cached files.
-const CACHE_NAME = 'focusflow-v14';
+const CACHE_NAME = 'focusflow-v15';
 const ASSETS = [
   './',
   './index.html',
