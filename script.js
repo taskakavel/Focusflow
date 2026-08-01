@@ -238,6 +238,7 @@ function setMode(nextMode) {
   totalDuration = DURATIONS[mode];
   timeLeft = totalDuration;
   pauseTimer();
+  if (els.sessionIcon) els.sessionIcon.hidden = false; // reset on mode change
   syncUI();
 }
 
@@ -362,6 +363,12 @@ function bindEvents() {
   }
   if (els.resetBtn) {
     els.resetBtn.addEventListener('click', resetTimer);
+  }
+  // Tap the mode label (e.g. "Focus") to toggle the icon beneath it
+  if (els.sessionLabel) {
+    els.sessionLabel.addEventListener('click', () => {
+      if (els.sessionIcon) els.sessionIcon.hidden = !els.sessionIcon.hidden;
+    });
   }
   els.tabs.forEach((tab) => {
     tab.addEventListener('click', () => setMode(tab.dataset.mode));

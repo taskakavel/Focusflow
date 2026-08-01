@@ -189,6 +189,13 @@ body {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 2px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.session-label:hover {
+  color: var(--text);
 }
 
 .session-icon {
