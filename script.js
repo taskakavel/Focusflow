@@ -33,6 +33,8 @@ const els = {
   startBtn: $('#startBtn'),
   resetBtn: $('#resetBtn'),
   tabs: Array.prototype.slice.call(document.querySelectorAll('.tab')),
+  timerWrap: $('.timer-wrap'),
+  timeDisplay: $('.timer-display'),
   ringFg: $('.ring-fg'),
   completedCount: $('#completedCount'),
   totalMinutes: $('#totalMinutes'),
@@ -131,6 +133,18 @@ function syncUI() {
   render();
 }
 
+// === Grow animation on countdown start ===
+function triggerGrow() {
+  if (!els.timerWrap || !els.timeDisplay) return;
+  els.timerWrap.classList.remove('grow');
+  els.timeDisplay.classList.remove('grow');
+  // Force a reflow so the animation re-triggers on every start
+  void els.timerWrap.offsetWidth;
+  void els.timeDisplay.offsetWidth;
+  els.timerWrap.classList.add('grow');
+  els.timeDisplay.classList.add('grow');
+}
+
 // === Wake lock (keeps the SCREEN ON while the app is visible & running) ===
 async function requestWakeLock() {
   try {
@@ -198,6 +212,7 @@ function startTimer() {
   syncUI();
   saveSession();
   requestWakeLock();
+  triggerGrow();
   timerId = setInterval(tick, 250);
 }
 

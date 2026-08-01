@@ -309,6 +309,30 @@ body {
   50% { opacity: 0.6; }
 }
 
+/* Elegant grow animation when the countdown starts */
+.timer-wrap.grow {
+  animation: grow-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes grow-in {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  55% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* Soft glow around the ring while the timer is running */
+.card.running .progress-ring {
+  filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.4));
+}
+
+.card.running[data-mode='short'] .progress-ring {
+  filter: drop-shadow(0 0 10px rgba(52, 211, 153, 0.4));
+}
+
+.card.running[data-mode='long'] .progress-ring {
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.4));
+}
+
 @media (max-width: 460px) {
   .card { padding: 18px; }
   .time { font-size: 2.8rem; }
