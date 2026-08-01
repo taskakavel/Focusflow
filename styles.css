@@ -317,10 +317,10 @@ body {
 
 /* While running: ring + time stay bigger for better visibility.
    The springy transition above grows them from the idle 0.93 and
-   holds them at 1.07 for the whole countdown. */
+   holds them at 1.18 for the whole countdown (~10% larger). */
 .card.running .timer-wrap,
 .card.running .timer-display {
-  transform: scale(1.07);
+  transform: scale(1.18);
 }
 
 /* Soft glow around the ring while the timer is running */
