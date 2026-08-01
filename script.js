@@ -6,9 +6,16 @@ const DURATIONS = {
 };
 
 const LABELS = {
-  focus: '⏳ Focus',
+  focus: 'Focus',
   short: 'Short Break',
   long: 'Long Break',
+};
+
+// Small icon shown under the mode label (e.g. hourglass in Focus mode)
+const MODE_ICONS = {
+  focus: '⏳',
+  short: '☕',
+  long: '🌙',
 };
 
 const STORAGE_KEY = 'focusflow-stats';
@@ -41,6 +48,7 @@ const els = {
   streak: $('#streak'),
   toast: $('#toast'),
   wakeHint: $('#wakeHint'),
+  sessionIcon: $('#sessionIcon'),
 };
 
 // === Persisted stats ===
@@ -110,6 +118,9 @@ function render(updateLabel = true) {
     els.ringFg.style.strokeDashoffset = String(CIRC * (1 - progress));
   }
   if (updateLabel && els.sessionLabel) els.sessionLabel.textContent = LABELS[mode];
+  if (els.sessionIcon) {
+    els.sessionIcon.textContent = MODE_ICONS[mode] || '';
+  }
 }
 
 function renderStats() {

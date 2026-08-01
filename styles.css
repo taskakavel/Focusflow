@@ -191,6 +191,12 @@ body {
   letter-spacing: 2px;
 }
 
+.session-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
 /* Controls */
 .controls {
   display: flex;
