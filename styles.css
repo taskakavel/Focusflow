@@ -126,6 +126,9 @@ body {
   width: 300px;
   height: 300px;
   margin: 0 auto;
+  /* Idle state: slightly smaller. Springy transition on start/pause. */
+  transform: scale(0.93);
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .progress-ring {
@@ -168,6 +171,9 @@ body {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  /* Idle state: slightly smaller. Springy transition on start/pause. */
+  transform: scale(0.93);
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .time {
@@ -309,15 +315,12 @@ body {
   50% { opacity: 0.6; }
 }
 
-/* Elegant grow animation when the countdown starts */
-.timer-wrap.grow {
-  animation: grow-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes grow-in {
-  0% { transform: scale(0.9); opacity: 0.7; }
-  55% { transform: scale(1.04); opacity: 1; }
-  100% { transform: scale(1); }
+/* While running: ring + time stay bigger for better visibility.
+   The springy transition above grows them from the idle 0.93 and
+   holds them at 1.07 for the whole countdown. */
+.card.running .timer-wrap,
+.card.running .timer-display {
+  transform: scale(1.07);
 }
 
 /* Soft glow around the ring while the timer is running */
