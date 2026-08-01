@@ -123,8 +123,8 @@ body {
 /* Timer ring */
 .timer-wrap {
   position: relative;
-  width: 260px;
-  height: 260px;
+  width: 300px;
+  height: 300px;
   margin: 0 auto;
 }
 
@@ -171,7 +171,7 @@ body {
 }
 
 .time {
-  font-size: 3.4rem;
+  font-size: 4.2rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 1px;
@@ -335,6 +335,6 @@ body {
 
 @media (max-width: 460px) {
   .card { padding: 18px; }
-  .time { font-size: 2.8rem; }
-  .timer-wrap { width: 220px; height: 220px; }
+  .time { font-size: 3.4rem; }
+  .timer-wrap { width: 260px; height: 260px; }
 }
